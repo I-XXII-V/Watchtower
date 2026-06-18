@@ -27,11 +27,6 @@ curl -L https://github.com/I-XXII-V/Watchtower/releases/latest/download/watchtow
 chmod +x watchtower && sudo mv watchtower /usr/local/bin/
 ```
 
-**AUR (Arch Linux):**
-```bash
-yay -S watchtower
-```
-
 **From source:**
 ```bash
 cargo install --git https://github.com/I-XXII-V/Watchtower
