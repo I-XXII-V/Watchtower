@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// Normalized health status string (not emoji)
 pub fn health_to_string(emoji: &str) -> String {
@@ -11,6 +11,15 @@ pub fn health_to_string(emoji: &str) -> String {
     }
 }
 
+/// A vulnerability found for a package.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VulnInfo {
+    pub id: String,
+    pub summary: Option<String>,
+    pub severity: Option<String>,
+    pub aliases: Vec<String>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct PackageResult {
     pub name: String,
@@ -19,6 +28,7 @@ pub struct PackageResult {
     pub description: Option<String>,
     pub latest_version: Option<String>,
     pub stale_reason: Option<String>,
+    pub vulns: Vec<VulnInfo>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -28,6 +38,7 @@ pub struct Summary {
     pub inactive: u32,
     pub dead: u32,
     pub unknown: u32,
+    pub cves: u32,
 }
 
 impl Summary {
@@ -38,6 +49,7 @@ impl Summary {
             inactive: 0,
             dead: 0,
             unknown: 0,
+            cves: 0,
         }
     }
 }
@@ -91,5 +103,19 @@ mod tests {
         assert_eq!(s.inactive, 0);
         assert_eq!(s.dead, 0);
         assert_eq!(s.unknown, 0);
+        assert_eq!(s.cves, 0);
+    }
+
+    #[test]
+    fn test_vuln_info_serialize() {
+        let v = VulnInfo {
+            id: "GHSA-xxxx".into(),
+            summary: Some("test vuln".into()),
+            severity: Some("HIGH".into()),
+            aliases: vec!["CVE-2024-1234".into()],
+        };
+        let json = serde_json::to_string(&v).unwrap();
+        assert!(json.contains("GHSA-xxxx"));
+        assert!(json.contains("CVE-2024-1234"));
     }
 }

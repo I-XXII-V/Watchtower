@@ -1,9 +1,11 @@
 mod api;
+mod cache;
 mod cargo;
 mod display;
 mod downstream;
 mod golang;
 mod npm;
+mod osv;
 mod pypi;
 mod types;
 

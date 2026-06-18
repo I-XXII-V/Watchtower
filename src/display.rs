@@ -174,6 +174,7 @@ pub fn scan_installed(stale_only: bool, output_json: bool) {
                                 description: pkg.description.clone(),
                                 latest_version: None,
                                 stale_reason: get_stale_reason(pkg),
+                                vulns: vec![],
                             });
                             return;
                         }
@@ -204,6 +205,7 @@ pub fn scan_installed(stale_only: bool, output_json: bool) {
                                 description: None,
                                 latest_version: None,
                                 stale_reason: Some("AUR API fetch failed".to_string()),
+                                vulns: vec![],
                             });
                         } else if !stale_only {
                             println!("{}❓ {} — {}fetch failed{}", GRAY, name, GRAY, RESET);
@@ -225,7 +227,7 @@ pub fn scan_installed(stale_only: bool, output_json: bool) {
         let output = ScanOutput {
             ecosystem: "aur".to_string(),
             packages,
-            summary: Summary { healthy: h, warning: w, inactive: i, dead: d, unknown: u },
+            summary: Summary { healthy: h, warning: w, inactive: i, dead: d, unknown: u, cves: 0 },
         };
         println!("{}", serde_json::to_string_pretty(&output).unwrap());
     } else {
@@ -276,6 +278,7 @@ pub fn search_and_display(query: &str, output_json: bool) {
                                 description: pkg.description.clone(),
                                 latest_version: None,
                                 stale_reason: None,
+                                vulns: vec![],
                             });
                             return;
                         }

@@ -1,5 +1,6 @@
 use crate::api::*;
 use crate::display::{health_color, is_stale};
+use crate::osv;
 use crate::types::{PackageResult, ScanOutput, Summary, health_to_string};
 use chrono::{Utc, NaiveDate};
 use serde::Deserialize;
@@ -233,6 +234,7 @@ pub fn scan_npm_deps(stale_only: bool, output_json: bool) {
     let count_inactive = &AtomicU32::new(0);
     let count_dead = &AtomicU32::new(0);
     let count_unknown = &AtomicU32::new(0);
+    let count_cves = &AtomicU32::new(0);
 
     let results: Arc<Mutex<Vec<PackageResult>>> = Arc::new(Mutex::new(Vec::new()));
 
@@ -253,7 +255,14 @@ pub fn scan_npm_deps(stale_only: bool, output_json: bool) {
                         _ => { count_unknown.fetch_add(1, Ordering::Relaxed); }
                     }
 
-                    if stale_only && !is_stale(health) { return; }
+                    // Query OSV for known vulnerabilities
+                    let vulns = osv::query_package("npm", &pkg_name, &pkg_version);
+                    let n_cves = vulns.len() as u32;
+                    if n_cves > 0 {
+                        count_cves.fetch_add(n_cves, Ordering::Relaxed);
+                    }
+
+                    if stale_only && !is_stale(health) && vulns.is_empty() { return; }
 
                     if output_json {
                         let mut r = results.lock().unwrap();
@@ -264,6 +273,7 @@ pub fn scan_npm_deps(stale_only: bool, output_json: bool) {
                             description: reg.description.clone(),
                             latest_version: reg.dist_tags.get("latest").cloned(),
                             stale_reason: get_npm_stale_reason(&reg),
+                            vulns: vulns.clone(),
                         });
                         return;
                     }
@@ -283,13 +293,40 @@ pub fn scan_npm_deps(stale_only: bool, output_json: bool) {
                         .map(|v| v.as_str())
                         .unwrap_or("?");
 
-                    let stale_info = if stale_only {
-                        get_npm_stale_reason(&reg)
-                            .map(|r| format!("\n   \x1b[90m└─ {}\x1b[0m", r))
-                            .unwrap_or_default()
-                    } else {
-                        String::new()
-                    };
+                    let mut extra = String::new();
+
+                    if stale_only {
+                        if let Some(reason) = get_npm_stale_reason(&reg) {
+                            extra.push_str(&format!("\n   \x1b[90m└─ {}\x1b[0m", reason));
+                        }
+                    }
+
+                    if !vulns.is_empty() {
+                        let cve_ids: Vec<&str> = vulns
+                            .iter()
+                            .flat_map(|v| v.aliases.first().map(|a| a.as_str()).or(Some(&v.id)))
+                            .take(3)
+                            .collect();
+                        let severity = vulns
+                            .iter()
+                            .filter_map(|v| v.severity.as_deref())
+                            .max()
+                            .unwrap_or("UNKNOWN");
+                        let color = match severity {
+                            "CRITICAL" | "HIGH" => "\x1b[31m",
+                            "MODERATE" | "MEDIUM" => "\x1b[33m",
+                            _ => "\x1b[90m",
+                        };
+                        extra.push_str(&format!(
+                            "\n   {}🚨 {} CVE{}: {}{}",
+                            color,
+                            vulns.len(),
+                            if vulns.len() == 1 { "" } else { "s" },
+                            cve_ids.join(", "),
+                            if cve_ids.len() < vulns.len() { ", ..." } else { "" },
+                        ));
+                        extra.push_str("\x1b[0m");
+                    }
 
                     println!(
                         "{}{}\x1b[0m {} v{} — {} (latest: {}){}",
@@ -299,7 +336,7 @@ pub fn scan_npm_deps(stale_only: bool, output_json: bool) {
                         pkg_version,
                         if desc.is_empty() { "no description" } else { &desc },
                         latest,
-                        stale_info
+                        extra,
                     );
                 }
                 Err(e) => {
@@ -313,6 +350,7 @@ pub fn scan_npm_deps(stale_only: bool, output_json: bool) {
                             description: None,
                             latest_version: None,
                             stale_reason: Some(e.clone()),
+                            vulns: vec![],
                         });
                     } else if !stale_only {
                         println!(
@@ -330,20 +368,26 @@ pub fn scan_npm_deps(stale_only: bool, output_json: bool) {
     let i = count_inactive.load(Ordering::Relaxed);
     let d = count_dead.load(Ordering::Relaxed);
     let u = count_unknown.load(Ordering::Relaxed);
+    let c = count_cves.load(Ordering::Relaxed);
 
     if output_json {
         let packages = Arc::try_unwrap(results).unwrap().into_inner().unwrap();
         let output = ScanOutput {
             ecosystem: "npm".to_string(),
             packages,
-            summary: Summary { healthy: h, warning: w, inactive: i, dead: d, unknown: u },
+            summary: Summary { healthy: h, warning: w, inactive: i, dead: d, unknown: u, cves: c },
         };
         println!("{}", serde_json::to_string_pretty(&output).unwrap());
     } else {
         println!();
+        let cve_part = if c > 0 {
+            format!("  \x1b[31m🚨 {}\x1b[0m", c)
+        } else {
+            String::new()
+        };
         println!(
-            "\x1b[1m📊 Summary:\x1b[0m \x1b[32m✅ {}\x1b[0m  \x1b[33m⚠️ {}\x1b[0m  \x1b[31m🔴 {}\x1b[0m  \x1b[31m🪦 {}\x1b[0m  \x1b[90m❓ {}\x1b[0m",
-            h, w, i, d, u
+            "\x1b[1m📊 Summary:\x1b[0m \x1b[32m✅ {}\x1b[0m  \x1b[33m⚠️ {}\x1b[0m  \x1b[31m🔴 {}\x1b[0m  \x1b[31m🪦 {}\x1b[0m  \x1b[90m❓ {}\x1b[0m{}",
+            h, w, i, d, u, cve_part
         );
     }
 }
