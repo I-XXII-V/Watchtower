@@ -88,3 +88,44 @@ pub fn fetch_github_info(owner: &str, repo: &str) -> Result<GitHubRepo, String> 
     serde_json::from_str(&text)
         .map_err(|e| format!("Parse error: {} — body: {}", e, &text[..200.min(text.len())]))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_github_repo_https() {
+        let result = parse_github_repo("https://github.com/owner/repo");
+        assert_eq!(result, Some(("owner".into(), "repo".into())));
+    }
+
+    #[test]
+    fn test_parse_github_repo_with_trailing_slash() {
+        let result = parse_github_repo("https://github.com/owner/repo/");
+        assert_eq!(result, Some(("owner".into(), "repo".into())));
+    }
+
+    #[test]
+    fn test_parse_github_repo_with_subdirectory() {
+        let result = parse_github_repo("https://github.com/owner/repo/tree/main/src");
+        assert_eq!(result, Some(("owner".into(), "repo".into())));
+    }
+
+    #[test]
+    fn test_parse_github_repo_not_github() {
+        let result = parse_github_repo("https://gitlab.com/owner/repo");
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_parse_github_repo_invalid() {
+        let result = parse_github_repo("not-a-url");
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_parse_github_repo_empty() {
+        let result = parse_github_repo("");
+        assert_eq!(result, None);
+    }
+}

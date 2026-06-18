@@ -48,3 +48,48 @@ pub struct ScanOutput {
     pub packages: Vec<PackageResult>,
     pub summary: Summary,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_health_to_string_healthy() {
+        assert_eq!(health_to_string("✅"), "healthy");
+    }
+
+    #[test]
+    fn test_health_to_string_warning() {
+        assert_eq!(health_to_string("⚠️"), "warning");
+    }
+
+    #[test]
+    fn test_health_to_string_inactive() {
+        assert_eq!(health_to_string("🔴"), "inactive");
+    }
+
+    #[test]
+    fn test_health_to_string_dead() {
+        assert_eq!(health_to_string("🪦"), "dead");
+    }
+
+    #[test]
+    fn test_health_to_string_unknown() {
+        assert_eq!(health_to_string("❓"), "unknown");
+    }
+
+    #[test]
+    fn test_health_to_string_fallback() {
+        assert_eq!(health_to_string("🤷"), "unknown");
+    }
+
+    #[test]
+    fn test_summary_new() {
+        let s = Summary::new();
+        assert_eq!(s.healthy, 0);
+        assert_eq!(s.warning, 0);
+        assert_eq!(s.inactive, 0);
+        assert_eq!(s.dead, 0);
+        assert_eq!(s.unknown, 0);
+    }
+}

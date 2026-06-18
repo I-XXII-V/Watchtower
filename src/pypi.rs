@@ -195,6 +195,58 @@ fn get_pypi_stale_reason(info: &PyPIInfo, urls: &[PyPIUrl]) -> Option<String> {
 
 // ── PyPI API ─────────────────────────────────────────────────────────
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_info(
+        home_page: Option<&str>,
+        project_urls: Option<Vec<(&str, &str)>>,
+    ) -> PyPIInfo {
+        PyPIInfo {
+            name: "test".into(),
+            version: "1.0.0".into(),
+            summary: None,
+            home_page: home_page.map(String::from),
+            project_urls: project_urls.map(|v| v.into_iter().map(|(k, v)| (k.into(), v.into())).collect()),
+        }
+    }
+
+    #[test]
+    fn test_extract_github_url_from_project_urls() {
+        let info = make_info(None, Some(vec![
+            ("Source", "https://github.com/owner/repo"),
+        ]));
+        assert_eq!(extract_github_url(&info), Some(("owner".into(), "repo".into())));
+    }
+
+    #[test]
+    fn test_extract_github_url_from_home_page() {
+        let info = make_info(Some("https://github.com/owner/repo"), None);
+        assert_eq!(extract_github_url(&info), Some(("owner".into(), "repo".into())));
+    }
+
+    #[test]
+    fn test_extract_github_url_project_urls_preferred() {
+        let info = make_info(Some("https://github.com/wrong/wrong"), Some(vec![
+            ("Source", "https://github.com/right/repo"),
+        ]));
+        assert_eq!(extract_github_url(&info), Some(("right".into(), "repo".into())));
+    }
+
+    #[test]
+    fn test_extract_github_url_none() {
+        let info = make_info(None, None);
+        assert_eq!(extract_github_url(&info), None);
+    }
+
+    #[test]
+    fn test_extract_github_url_not_github() {
+        let info = make_info(Some("https://gitlab.com/owner/repo"), None);
+        assert_eq!(extract_github_url(&info), None);
+    }
+}
+
 fn fetch_pypi_info(name: &str) -> Result<PyPIResponse, String> {
     let url = format!("https://pypi.org/pypi/{}/json", name);
     let client = reqwest::blocking::Client::new();
