@@ -216,7 +216,7 @@ pub fn scan_cargo_deps(stale_only: bool, output_json: bool) {
         .filter(|p| {
             p.source
                 .as_deref()
-                .map_or(false, |s| s.starts_with("registry+"))
+                .is_some_and(|s| s.starts_with("registry+"))
         })
         .collect();
 

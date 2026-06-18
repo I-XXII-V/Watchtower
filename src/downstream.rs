@@ -105,7 +105,7 @@ pub fn who_depends_crates(package: &str) {
                 let is_github = ver
                     .repository
                     .as_deref()
-                    .map_or(false, |u| u.contains("github.com"));
+                    .is_some_and(|u| u.contains("github.com"));
 
                 let desc = ver
                     .description

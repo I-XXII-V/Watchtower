@@ -72,7 +72,7 @@ fn is_stale(health: &str) -> bool {
 
 fn extract_github_url(info: &PyPIInfo) -> Option<(String, String)> {
     if let Some(urls) = &info.project_urls {
-        for (_key, url) in urls {
+        for url in urls.values() {
             if let Some(gh) = parse_github_repo(url) {
                 return Some(gh);
             }
