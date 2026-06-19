@@ -55,12 +55,17 @@ fn hijack_risk(pkg: &AurPackage) -> Option<String> {
 }
 
 pub fn get_health(pkg: &AurPackage) -> &str {
-    // 1) Out-of-date flag on AUR — paling penting
+    // 0) Hijack risk — override apapun, duluan
+    if hijack_risk(pkg).is_some() {
+        return "🚩";
+    }
+
+    // 1) Out-of-date flag on AUR
     if pkg.outofdate.is_some() {
         return "⚠️";
     }
 
-    // 2) Coba GitHub last commit — paling akurat kalo ada
+    // 2) Coba GitHub last commit
     if let Some(ref url) = pkg.url {
         if let Some((owner, repo)) = parse_github_repo(url) {
             if let Ok(gh) = fetch_github_info(&owner, &repo) {
@@ -73,21 +78,21 @@ pub fn get_health(pkg: &AurPackage) -> &str {
         }
     }
 
-    // 3) Fallback: LastModified dari AUR — gratis, no rate limit
+    // 3) Fallback: AUR LastModified
     score_from_days(days_since_unix(pkg.lastmodified))
 }
 
 pub fn health_color(health: &str) -> &str {
     match health {
         "✅" => GREEN,
-        "⚠️" => YELLOW,
+        "⚠️" | "🚩" => YELLOW,
         "🔴" | "🪦" => RED,
         _ => GRAY,
     }
 }
 
 pub fn is_stale(health: &str) -> bool {
-    health == "🪦" || health == "🔴" || health == "⚠️" || health == "❓"
+    health == "🪦" || health == "🔴" || health == "⚠️" || health == "❓" || health == "🚩"
 }
 
 pub fn fmt_downloads(n: u64) -> String {
@@ -225,7 +230,7 @@ pub fn scan_installed(stale_only: bool, output_json: bool, ci: bool) {
 
                         match health {
                             "✅" => { count_healthy.fetch_add(1, Ordering::Relaxed); }
-                            "⚠️" => { count_warning.fetch_add(1, Ordering::Relaxed); }
+                            "⚠️" | "🚩" => { count_warning.fetch_add(1, Ordering::Relaxed); }
                             "🔴" => { count_inactive.fetch_add(1, Ordering::Relaxed); }
                             "🪦" => { count_dead.fetch_add(1, Ordering::Relaxed); }
                             _ => { count_unknown.fetch_add(1, Ordering::Relaxed); }
@@ -556,6 +561,11 @@ mod tests {
     }
 
     #[test]
+    fn test_is_stale_hijack() {
+        assert!(is_stale("🚩"));
+    }
+
+    #[test]
     fn test_is_stale_unknown() {
         assert!(is_stale("❓"));
     }
@@ -578,6 +588,11 @@ mod tests {
     #[test]
     fn test_health_color_warning() {
         assert_eq!(health_color("⚠️"), "\x1b[33m");
+    }
+
+    #[test]
+    fn test_health_color_hijack() {
+        assert_eq!(health_color("🚩"), "\x1b[33m");
     }
 
     #[test]
