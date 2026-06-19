@@ -84,6 +84,7 @@ pub struct PackageResult {
     pub latest_version: Option<String>,
     pub stale_reason: Option<String>,
     pub vulns: Vec<VulnInfo>,
+    pub provenance: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]

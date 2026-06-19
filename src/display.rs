@@ -253,6 +253,7 @@ pub fn scan_installed(stale_only: bool, output_json: bool, ci: bool) {
                                 latest_version: None,
                                 stale_reason: get_stale_reason(pkg),
                                 vulns: vec![],
+                                provenance: None,
                             });
                             return;
                         }
@@ -293,6 +294,7 @@ pub fn scan_installed(stale_only: bool, output_json: bool, ci: bool) {
                                 latest_version: None,
                                 stale_reason: Some("AUR API fetch failed".to_string()),
                                 vulns: vec![],
+                                provenance: None,
                             });
                         } else if !stale_only {
                             println!("{}❓ {} — {}fetch failed{}", GRAY, name, GRAY, RESET);
@@ -388,6 +390,7 @@ pub fn search_and_display(query: &str, output_json: bool) {
                                 latest_version: None,
                                 stale_reason: None,
                                 vulns: vec![],
+                                provenance: None,
                             });
                             return;
                         }

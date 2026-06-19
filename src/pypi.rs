@@ -322,8 +322,9 @@ pub fn scan_pypi_deps(stale_only: bool, output_json: bool, ci: bool, licenses: b
                             description: resp.info.summary.clone(),
                             latest_version: Some(resp.info.version.clone()),
                             stale_reason: get_pypi_stale_reason(&resp.info, &resp.urls),
-                            vulns: vulns.clone(),
-                        });
+                                vulns: vulns.clone(),
+                                provenance: None,
+                            });
                         return;
                     }
 
@@ -394,8 +395,9 @@ pub fn scan_pypi_deps(stale_only: bool, output_json: bool, ci: bool, licenses: b
                             description: None,
                             latest_version: None,
                             stale_reason: Some(e.clone()),
-                            vulns: vec![],
-                        });
+                                vulns: vec![],
+                                provenance: None,
+                            });
                     } else if !stale_only {
                         println!(
                             "\x1b[90m❓ {} v{} — fetch failed: {}\x1b[0m",

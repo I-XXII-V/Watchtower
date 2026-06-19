@@ -118,6 +118,7 @@ struct NpmBuilder {
 
 #[derive(Deserialize)]
 struct NpmMetadata {
+    #[allow(dead_code)]
     #[serde(rename = "invocationId")]
     invocation_id: String,
 }
@@ -125,6 +126,7 @@ struct NpmMetadata {
 #[derive(Deserialize)]
 struct NpmRunDetails {
     builder: NpmBuilder,
+    #[allow(dead_code)]
     metadata: NpmMetadata,
 }
 
@@ -277,17 +279,18 @@ fn fetch_npm_info(name: &str) -> Result<NpmRegistryResponse, String> {
         .map_err(|e| format!("JSON error: {} — body: {}", e, &text[..200.min(text.len())]))
 }
 
-/// Parsed npm provenance information for display.
-struct ProvenanceInfo {
-    repo: String,
-    commit: String,
-    builder: String,
-    #[allow(dead_code)]
-    workflow_run: String,
-}
-
 /// Fetch npm provenance attestations for a package at a specific version.
-fn fetch_npm_attestations(name: &str, version: &str) -> Option<ProvenanceInfo> {
+/// Returns a human-readable status string, never None.
+/// Uses the same 6-hour cache as OSV queries.
+fn fetch_npm_attestation(name: &str, version: &str) -> String {
+    let cache_key = format!("npm-attest/{}/{}", name, version);
+    let cache = crate::cache::init();
+
+    // Check cache first
+    if let Some(cached) = cache.get("npm", &cache_key, 6) {
+        return cached;
+    }
+
     let encoded = name.replace('/', "%2F");
     let url = format!(
         "https://registry.npmjs.org/-/npm/v1/attestations/{}@{}",
@@ -295,18 +298,35 @@ fn fetch_npm_attestations(name: &str, version: &str) -> Option<ProvenanceInfo> {
     );
 
     let client = reqwest::blocking::Client::new();
-    let resp = client
+    let resp = match client
         .get(&url)
         .header("User-Agent", "watchtower")
         .send()
-        .ok()?;
+    {
+        Ok(r) => r,
+        Err(_) => {
+            let msg = "⚠️ Provenance: network error".to_string();
+            cache.set("npm", &cache_key, &msg);
+            return msg;
+        }
+    };
 
     if !resp.status().is_success() {
-        return None;
+        // 404 = no attestations — common for packages without provenance
+        let msg = "Provenance: not available".to_string();
+        cache.set("npm", &cache_key, &msg);
+        return msg;
     }
 
-    let text = resp.text().ok()?;
-    let att_response: NpmAttestationsResponse = serde_json::from_str(&text).ok()?;
+    let text = match resp.text() {
+        Ok(t) => t,
+        Err(_) => return "⚠️ Provenance: parse error".to_string(),
+    };
+
+    let att_response: NpmAttestationsResponse = match serde_json::from_str(&text) {
+        Ok(a) => a,
+        Err(_) => return "⚠️ Provenance: invalid response".to_string(),
+    };
 
     // Find the SLSA provenance attestation
     for att in &att_response.attestations {
@@ -314,34 +334,64 @@ fn fetch_npm_attestations(name: &str, version: &str) -> Option<ProvenanceInfo> {
             continue;
         }
 
-        // Decode base64 payload
-        let payload_bytes = base64::engine::general_purpose::STANDARD
+        let payload_bytes = match base64::engine::general_purpose::STANDARD
             .decode(&att.bundle.dsse_envelope.payload)
-            .ok()?;
+        {
+            Ok(b) => b,
+            Err(_) => continue,
+        };
 
-        let payload: NpmProvenancePayload = serde_json::from_slice(&payload_bytes).ok()?;
+        let payload: NpmProvenancePayload = match serde_json::from_slice(&payload_bytes) {
+            Ok(p) => p,
+            Err(_) => continue,
+        };
         let pred = &payload.predicate;
 
-        let workflow = pred.build_definition.external_parameters.workflow.as_ref()?;
+        let workflow = match pred.build_definition.external_parameters.workflow.as_ref() {
+            Some(w) => w,
+            None => continue,
+        };
+
         let commit = pred
             .build_definition
             .resolved_dependencies
-            .first()?
-            .digest
-            .get("gitCommit")?
-            .clone();
+            .first()
+            .and_then(|d| d.digest.get("gitCommit"))
+            .map(|c| c.get(..7).unwrap_or(c).to_string());
 
-        let short_commit = commit.get(..7).unwrap_or(&commit).to_string();
+        // Normalize repo URL: strip trailing junk, keep owner/repo
+        let repo = workflow
+            .repository
+            .trim_start_matches("https://")
+            .trim_start_matches("http://")
+            .trim_start_matches("git@")
+            .trim_end_matches(".git")
+            .trim_end_matches('/')
+            .to_string();
 
-        return Some(ProvenanceInfo {
-            repo: workflow.repository.trim_start_matches("https://").to_string(),
-            commit: short_commit,
-            builder: pred.run_details.builder.id.clone(),
-            workflow_run: pred.run_details.metadata.invocation_id.clone(),
-        });
+        let builder = pred
+            .run_details
+            .builder
+            .id
+            .trim_start_matches("https://")
+            .to_string();
+
+        let commit_part = match &commit {
+            Some(c) => format!("@{}", c),
+            None => String::new(),
+        };
+
+        let msg = format!(
+            "🧾 Provenance: {}{} (built by {})",
+            repo, commit_part, builder
+        );
+        cache.set("npm", &cache_key, &msg);
+        return msg;
     }
 
-    None
+    let msg = "Provenance: not available".to_string();
+    cache.set("npm", &cache_key, &msg);
+    msg
 }
 
 // ── Public entry point ───────────────────────────────────────────────
@@ -447,6 +497,9 @@ pub fn scan_npm_deps(stale_only: bool, output_json: bool, ci: bool, licenses: bo
                         return;
                     }
 
+                    // Check npm provenance attestation (cached, always returns a string)
+                    let provenance = fetch_npm_attestation(&pkg_name, &pkg_version);
+
                     if output_json {
                         let mut r = results.lock().unwrap();
                         r.push(PackageResult {
@@ -457,6 +510,7 @@ pub fn scan_npm_deps(stale_only: bool, output_json: bool, ci: bool, licenses: bo
                             latest_version: reg.dist_tags.get("latest").cloned(),
                             stale_reason: get_npm_stale_reason(&reg),
                             vulns: vulns.clone(),
+                            provenance: Some(provenance.clone()),
                         });
                         return;
                     }
@@ -484,13 +538,12 @@ pub fn scan_npm_deps(stale_only: bool, output_json: bool, ci: bool, licenses: bo
                         }
                     }
 
-                    // Check npm provenance attestation
-                    if let Some(prov) = fetch_npm_attestations(&pkg_name, &pkg_version) {
-                        extra.push_str(&format!(
-                            "\n   \x1b[32m📜 Provenance\x1b[0m: {}@{} (built by {})",
-                            prov.repo, prov.commit, prov.builder
-                        ));
-                    }
+                    // Show provenance status (always, so user can see both verified and missing)
+                    let prov_color = if provenance.starts_with("🧾") { "\x1b[32m" } else { "\x1b[90m" };
+                    extra.push_str(&format!(
+                        "\n   {}{}\x1b[0m",
+                        prov_color, provenance
+                    ));
 
                     if !vulns.is_empty() {
                         let cve_ids: Vec<&str> = vulns
@@ -549,8 +602,9 @@ pub fn scan_npm_deps(stale_only: bool, output_json: bool, ci: bool, licenses: bo
                             description: None,
                             latest_version: None,
                             stale_reason: Some(e.clone()),
-                            vulns: vec![],
-                        });
+                                vulns: vec![],
+                                provenance: None,
+                            });
                     } else if !stale_only {
                         println!(
                             "\x1b[90m❓ {} v{} — fetch failed: {}\x1b[0m",

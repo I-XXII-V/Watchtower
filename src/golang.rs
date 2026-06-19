@@ -257,8 +257,9 @@ pub fn scan_go_deps(stale_only: bool, output_json: bool, ci: bool, _licenses: bo
                             description: None,
                             latest_version: Some(proxy.Version.trim_start_matches('v').to_string()),
                             stale_reason,
-                            vulns: vulns.clone(),
-                        });
+                                vulns: vulns.clone(),
+                                provenance: None,
+                            });
                         return;
                     }
 
@@ -329,8 +330,9 @@ pub fn scan_go_deps(stale_only: bool, output_json: bool, ci: bool, _licenses: bo
                             description: None,
                             latest_version: None,
                             stale_reason: Some(e.clone()),
-                            vulns: vec![],
-                        });
+                                vulns: vec![],
+                                provenance: None,
+                            });
                     } else if !stale_only {
                         println!(
                             "\x1b[90m❓ {} v{} — fetch failed: {}\x1b[0m",

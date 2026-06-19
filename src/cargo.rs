@@ -273,6 +273,7 @@ pub fn scan_cargo_deps(stale_only: bool, output_json: bool, ci: bool, licenses: 
                                 latest_version: Some(data.max_stable_version.clone()),
                                 stale_reason: get_crate_stale_reason(data),
                                 vulns: vulns.clone(),
+                                provenance: None,
                             });
                             return;
                         }
@@ -350,6 +351,7 @@ pub fn scan_cargo_deps(stale_only: bool, output_json: bool, ci: bool, licenses: 
                                 latest_version: None,
                                 stale_reason: Some(e.clone()),
                                 vulns: vec![],
+                                provenance: None,
                             });
                         } else if !stale_only {
                             println!(
