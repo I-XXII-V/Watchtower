@@ -44,8 +44,14 @@ struct CrateData {
     license: Option<String>,
 }
 
-// ── Health scoring ───────────────────────────────────────────────────
-
+/// Health scoring for crates.io packages.
+///
+/// Strategy:
+/// 1. Check crates.io `updated_at` — if stale (⚠️/🔴/🪦), return immediately.
+/// 2. If crates.io says ✅ (fresh), also check GitHub `pushed_at` for a finer-
+///    grained score. A crate may have a recent release but an abandoned repo.
+/// 3. GitHub check is skipped entirely when crates.io already found staleness —
+///    no need to burn a GitHub API call for a package we already know is stale.
 fn get_crate_health(data: &CrateData) -> &'static str {
     if let Some(days) = days_since_date_prefix(&data.updated_at) {
         let health = score_from_days(days);
@@ -75,10 +81,10 @@ fn get_crate_stale_reason(data: &CrateData) -> Option<String> {
             return Some(format!("No release on crates.io in {} days — DEAD", days));
         }
         if days > 365 {
-            return Some(format!("No release on crates.io in {} days", days));
+            return Some(format!("No release on crates.io in {} days — INACTIVE", days));
         }
         if days > 180 {
-            return Some(format!("No release on crates.io in {} days", days));
+            return Some(format!("No release on crates.io in {} days — STALE", days));
         }
     }
 
@@ -91,10 +97,10 @@ fn get_crate_stale_reason(data: &CrateData) -> Option<String> {
                             return Some(format!("No GitHub activity in {} days — DEAD", days));
                         }
                         if days > 365 {
-                            return Some(format!("No GitHub activity in {} days", days));
+                            return Some(format!("No GitHub activity in {} days — INACTIVE", days));
                         }
                         if days > 180 {
-                            return Some(format!("No GitHub activity in {} days", days));
+                            return Some(format!("No GitHub activity in {} days — STALE", days));
                         }
                     }
                 }

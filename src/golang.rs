@@ -82,10 +82,10 @@ fn get_go_stale_reason(proxy: &GoProxyResponse, mod_path: &str) -> Option<String
             return Some(format!("No release in {} days — DEAD", days));
         }
         if days > 365 {
-            return Some(format!("No release in {} days", days));
+            return Some(format!("No release in {} days — INACTIVE", days));
         }
         if days > 180 {
-            return Some(format!("No release in {} days", days));
+            return Some(format!("No release in {} days — STALE", days));
         }
     }
 
@@ -97,15 +97,17 @@ fn get_go_stale_reason(proxy: &GoProxyResponse, mod_path: &str) -> Option<String
                         return Some(format!("No GitHub activity in {} days — DEAD", days));
                     }
                     if days > 365 {
-                        return Some(format!("No GitHub activity in {} days", days));
+                        return Some(format!("No GitHub activity in {} days — INACTIVE", days));
                     }
                     if days > 180 {
-                        return Some(format!("No GitHub activity in {} days", days));
+                        return Some(format!("No GitHub activity in {} days — STALE", days));
                     }
                 }
             }
             Err(e) => return Some(format!("GitHub fetch failed: {}", e)),
         }
+    } else {
+        return Some("Not a GitHub-hosted module".to_string());
     }
 
     None

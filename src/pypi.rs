@@ -140,10 +140,10 @@ fn get_pypi_stale_reason(info: &PyPIInfo, urls: &[PyPIUrl]) -> Option<String> {
                     return Some(format!("No release on PyPI in {} days — DEAD", days));
                 }
                 if days > 365 {
-                    return Some(format!("No release on PyPI in {} days", days));
+                    return Some(format!("No release on PyPI in {} days — INACTIVE", days));
                 }
                 if days > 180 {
-                    return Some(format!("No release on PyPI in {} days", days));
+                    return Some(format!("No release on PyPI in {} days — STALE", days));
                 }
             }
         }
@@ -157,10 +157,10 @@ fn get_pypi_stale_reason(info: &PyPIInfo, urls: &[PyPIUrl]) -> Option<String> {
                         return Some(format!("No GitHub activity in {} days — DEAD", days));
                     }
                     if days > 365 {
-                        return Some(format!("No GitHub activity in {} days", days));
+                        return Some(format!("No GitHub activity in {} days — INACTIVE", days));
                     }
                     if days > 180 {
-                        return Some(format!("No GitHub activity in {} days", days));
+                        return Some(format!("No GitHub activity in {} days — STALE", days));
                     }
                 }
             }

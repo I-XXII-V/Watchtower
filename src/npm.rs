@@ -112,10 +112,10 @@ fn get_npm_stale_reason(data: &NpmRegistryResponse) -> Option<String> {
                 return Some(format!("No update on npm in {} days — DEAD", days));
             }
             if days > 365 {
-                return Some(format!("No update on npm in {} days", days));
+                return Some(format!("No update on npm in {} days — INACTIVE", days));
             }
             if days > 180 {
-                return Some(format!("No update on npm in {} days", days));
+                return Some(format!("No update on npm in {} days — STALE", days));
             }
         }
     }
@@ -130,11 +130,11 @@ fn get_npm_stale_reason(data: &NpmRegistryResponse) -> Option<String> {
                             if days > 730 {
                                 return Some(format!("No GitHub activity in {} days — DEAD", days));
                             }
-                            if days > 365 {
-                                return Some(format!("No GitHub activity in {} days", days));
-                            }
-                            if days > 180 {
-                                return Some(format!("No GitHub activity in {} days", days));
+                        if days > 365 {
+                            return Some(format!("No GitHub activity in {} days — INACTIVE", days));
+                        }
+                        if days > 180 {
+                            return Some(format!("No GitHub activity in {} days — STALE", days));
                             }
                         }
                     }
