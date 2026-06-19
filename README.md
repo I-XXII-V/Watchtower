@@ -84,11 +84,11 @@ watchtower --npm --licenses
 With `--stale`, each package explains why it's rotting:
 
 ```
-⚠️ paru — maintainer: Morganamilo, popularity: 38.5
+⚠️ tracing v0.1.44 — Application-level tracing for Rust, downloads: 658.4M
    └─ No release on crates.io in 182 days
 ```
 
-AUR packages get multiple reasons when needed:
+AUR packages get multiple reasons when needed — including the LastModified fallback:
 
 ```
 🪦 pipes.sh — maintainer: StefansMez, popularity: 1.6
@@ -102,6 +102,7 @@ With `--json`, you can pipe it somewhere that makes you look productive:
 watchtower --cargo --json | jq '.summary'
 watchtower --cargo --json | jq '.packages[] | select(.health == "dead") | .name'
 watchtower --cargo --stale --json | jq '.packages[].stale_reason'
+watchtower --json | jq '.summary.hijack'          # AUR: hijack count
 ```
 
 ### Single package info
@@ -141,9 +142,8 @@ Results are cached in `~/.cache/watchtower/`. Second scan is faster. First scan 
 
 For registry packages (Cargo, npm, PyPI, Go):
 
-1. **Out-of-date flag** on AUR — immediate ⚠️
-2. **Last release date** on the registry (crates.io / npm / PyPI / Go proxy)
-3. **Last commit date** on GitHub (if upstream is on GitHub)
+1. **Last release date** on the registry (crates.io / npm / PyPI / Go proxy)
+2. **Last commit date** on GitHub (if upstream is on GitHub)
 
 For AUR packages:
 
@@ -153,7 +153,11 @@ For AUR packages:
 
 This means even without a `GITHUB_TOKEN`, all your AUR packages get scored from the PKGBUILD modification date instead of showing ❓.
 
-Additional AUR signal: if a PKGBUILD was updated recently (< 90 days) but the package is orphaned with low popularity, Watchtower flags a potential **maintainer takeover / supply-chain hijack** risk (🚩). These show up separately in the summary so they don't get lost in the warning count.
+Additional AUR signal: if a PKGBUILD was updated recently (< 90 days) but the package is orphaned with low popularity, Watchtower flags a potential **maintainer takeover / supply-chain hijack** risk (🚩). These show up separately in the summary so they don't get lost in the warning count:
+
+```
+📊 Summary: ✅ 12  ⚠️ 5  🚩 2  🔴 1  🪦 0  ❓ 39
+```
 
 | Status | Meaning |
 |--------|---------|
