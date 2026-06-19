@@ -2,7 +2,8 @@ use crate::api::*;
 use crate::display::{health_color, is_stale};
 use crate::osv;
 use crate::types::{
-    days_since_date_prefix, health_to_string, score_from_days, PackageResult, ScanOutput, Summary,
+    days_since_date_prefix, health_to_string, print_license_summary, score_from_days,
+    track_license, PackageResult, ScanOutput, Summary,
 };
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -289,18 +290,7 @@ pub fn scan_npm_deps(stale_only: bool, output_json: bool, ci: bool, licenses: bo
 
                     // Track license if --licenses is active
                     if licenses {
-                        if let Some(ref lic) = reg.license {
-                            let mut lm = licenses_map.lock().unwrap();
-                            *lm.entry(if lic.is_empty() {
-                                "Unknown".into()
-                            } else {
-                                lic.clone()
-                            })
-                            .or_insert(0) += 1;
-                        } else {
-                            let mut lm = licenses_map.lock().unwrap();
-                            *lm.entry("Unknown".into()).or_insert(0) += 1;
-                        }
+                        track_license(&*licenses_map, reg.license.as_deref());
                     }
 
                     if stale_only && !is_stale(health) && vulns.is_empty() {
@@ -451,15 +441,7 @@ pub fn scan_npm_deps(stale_only: bool, output_json: bool, ci: bool, licenses: bo
     }
 
     if licenses {
-        let map = licenses_map.lock().unwrap();
-        let mut sorted: Vec<(String, u32)> = map.iter().map(|(k, v)| (k.clone(), *v)).collect();
-        sorted.sort_by_key(|b| std::cmp::Reverse(b.1));
-        let total: u32 = map.values().sum();
-        println!("\n\x1b[1m📋 Licenses:\x1b[0m");
-        for (name, count) in &sorted {
-            let pct = (*count as f64 / total as f64) * 100.0;
-            println!("   \x1b[90m{:20}\x1b[0m {} ({:.0}%)", name, count, pct);
-        }
+        print_license_summary(&*licenses_map);
     }
 
     if ci && (d > 0 || c > 0) {
