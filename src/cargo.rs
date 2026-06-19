@@ -254,7 +254,7 @@ pub fn scan_cargo_deps(stale_only: bool, output_json: bool, ci: bool, licenses: 
 
                         // Track license if --licenses is active
                         if licenses {
-                            track_license(&*licenses_map, data.license.as_deref());
+                            track_license(&licenses_map, data.license.as_deref());
                         }
 
                         // Show if stale OR has CVEs (when --stale is active)
@@ -386,7 +386,7 @@ pub fn scan_cargo_deps(stale_only: bool, output_json: bool, ci: bool, licenses: 
             cves: c,
         },
         licenses,
-        Some(&*licenses_map),
+        Some(&licenses_map),
         ci,
     );
 }

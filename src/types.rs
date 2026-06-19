@@ -164,10 +164,15 @@ pub fn print_summary(
         } else {
             String::new()
         };
+        let hijack_part = if summary.hijack > 0 {
+            format!("  \x1b[33m🚩 {}\x1b[0m", summary.hijack)
+        } else {
+            String::new()
+        };
         println!();
         println!(
-            "\x1b[1m📊 Summary:\x1b[0m \x1b[32m✅ {}\x1b[0m  \x1b[33m⚠️ {}\x1b[0m  \x1b[31m🔴 {}\x1b[0m  \x1b[31m🪦 {}\x1b[0m  \x1b[90m❓ {}\x1b[0m{}",
-            summary.healthy, summary.warning, summary.inactive, summary.dead, summary.unknown, cve_part
+            "\x1b[1m📊 Summary:\x1b[0m \x1b[32m✅ {}\x1b[0m  \x1b[33m⚠️ {}\x1b[0m{}  \x1b[31m🔴 {}\x1b[0m  \x1b[31m🪦 {}\x1b[0m  \x1b[90m❓ {}\x1b[0m{}",
+            summary.healthy, summary.warning, hijack_part, summary.inactive, summary.dead, summary.unknown, cve_part
         );
     }
 

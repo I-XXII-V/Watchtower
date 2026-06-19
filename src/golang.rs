@@ -83,6 +83,29 @@ fn get_go_health(proxy: &GoProxyResponse) -> &'static str {
         .unwrap_or("❓")
 }
 
+/// Check if a Go module has been hijacked on GitHub.
+/// Returns `Some(reason)` if hijack risk detected.
+fn get_go_hijack(mod_path: &str) -> Option<String> {
+    let (owner, repo) = go_mod_to_github(mod_path)?;
+
+    match fetch_github_info(&owner, &repo) {
+        Ok(gh) => {
+            if gh.archived {
+                Some("Repo is archived — may be hijacked".to_string())
+            } else {
+                None
+            }
+        }
+        Err(e) => {
+            if e.contains("404") {
+                Some("GitHub repo not found (404) — module path may be hijacked".to_string())
+            } else {
+                None // Network error — can't determine
+            }
+        }
+    }
+}
+
 fn get_go_stale_reason(proxy: &GoProxyResponse, mod_path: &str) -> Option<String> {
     if let Some(days) = days_since_date_prefix(&proxy.Time) {
         if days > 730 {
@@ -183,6 +206,7 @@ pub fn scan_go_deps(stale_only: bool, output_json: bool, ci: bool, _licenses: bo
 
     let count_healthy = &AtomicU32::new(0);
     let count_warning = &AtomicU32::new(0);
+    let count_hijack = &AtomicU32::new(0);
     let count_inactive = &AtomicU32::new(0);
     let count_dead = &AtomicU32::new(0);
     let count_unknown = &AtomicU32::new(0);
@@ -197,11 +221,16 @@ pub fn scan_go_deps(stale_only: bool, output_json: bool, ci: bool, _licenses: bo
             let results = Arc::clone(&results);
             s.spawn(move || match fetch_go_proxy(&mod_name) {
                 Ok(proxy) => {
-                    let health = get_go_health(&proxy);
+                    let proxy_health = get_go_health(&proxy);
+
+                    // Check hijack risk (only for GitHub-hosted modules)
+                    let hijack = get_go_hijack(&mod_name);
+                    let health = if hijack.is_some() { "🚩" } else { proxy_health };
 
                     match health {
                         "✅" => count_healthy.fetch_add(1, Ordering::Relaxed),
                         "⚠️" => count_warning.fetch_add(1, Ordering::Relaxed),
+                        "🚩" => count_hijack.fetch_add(1, Ordering::Relaxed),
                         "🔴" => count_inactive.fetch_add(1, Ordering::Relaxed),
                         "🪦" => count_dead.fetch_add(1, Ordering::Relaxed),
                         _ => count_unknown.fetch_add(1, Ordering::Relaxed),
@@ -219,6 +248,7 @@ pub fn scan_go_deps(stale_only: bool, output_json: bool, ci: bool, _licenses: bo
                     }
 
                     if output_json {
+                        let stale_reason = hijack.clone().or_else(|| get_go_stale_reason(&proxy, &mod_name));
                         let mut r = results.lock().unwrap();
                         r.push(PackageResult {
                             name: mod_name.clone(),
@@ -226,7 +256,7 @@ pub fn scan_go_deps(stale_only: bool, output_json: bool, ci: bool, _licenses: bo
                             health: health_to_string(health),
                             description: None,
                             latest_version: Some(proxy.Version.trim_start_matches('v').to_string()),
-                            stale_reason: get_go_stale_reason(&proxy, &mod_name),
+                            stale_reason,
                             vulns: vulns.clone(),
                         });
                         return;
@@ -235,6 +265,11 @@ pub fn scan_go_deps(stale_only: bool, output_json: bool, ci: bool, _licenses: bo
                     let latest = proxy.Version.trim_start_matches('v');
 
                     let mut extra = String::new();
+
+                    // Show hijack reason (always, not just --stale)
+                    if let Some(reason) = &hijack {
+                        extra.push_str(&format!("\n   \x1b[33m└─ 🚩 {}\x1b[0m", reason));
+                    }
 
                     if stale_only {
                         if let Some(reason) = get_go_stale_reason(&proxy, &mod_name) {
@@ -309,6 +344,7 @@ pub fn scan_go_deps(stale_only: bool, output_json: bool, ci: bool, _licenses: bo
 
     let h = count_healthy.load(Ordering::Relaxed);
     let w = count_warning.load(Ordering::Relaxed);
+    let j = count_hijack.load(Ordering::Relaxed);
     let i = count_inactive.load(Ordering::Relaxed);
     let d = count_dead.load(Ordering::Relaxed);
     let u = count_unknown.load(Ordering::Relaxed);
@@ -323,7 +359,7 @@ pub fn scan_go_deps(stale_only: bool, output_json: bool, ci: bool, _licenses: bo
         Summary {
             healthy: h,
             warning: w,
-            hijack: 0,
+            hijack: j,
             inactive: i,
             dead: d,
             unknown: u,
@@ -418,5 +454,19 @@ require (
         assert_eq!(deps.len(), 2);
         assert!(deps.contains(&("github.com/foo/bar".into(), "1.0.0".into())));
         assert!(deps.contains(&("github.com/baz/qux".into(), "2.0.0".into())));
+    }
+
+    #[test]
+    fn test_get_go_hijack_non_github() {
+        // Non-GitHub modules can't be hijack-checked
+        assert_eq!(get_go_hijack("gitlab.com/owner/repo"), None);
+        assert_eq!(get_go_hijack("bitbucket.org/owner/repo"), None);
+        assert_eq!(get_go_hijack("example.com/module"), None);
+    }
+
+    #[test]
+    fn test_get_go_hijack_too_short() {
+        // Module path too short to extract owner/repo
+        assert_eq!(get_go_hijack("github.com/owner"), None);
     }
 }
