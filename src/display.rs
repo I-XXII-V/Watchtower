@@ -1,7 +1,7 @@
 use crate::api::*;
 use crate::types::{
-    days_since_date_prefix, days_since_unix, health_to_string, score_from_days, PackageResult,
-    ScanOutput, Summary,
+    collect_results, days_since_date_prefix, days_since_unix, health_to_string, score_from_days,
+    PackageResult, ScanOutput, Summary,
 };
 use serde::Serialize;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -311,7 +311,7 @@ pub fn scan_installed(stale_only: bool, output_json: bool, ci: bool) {
     let u = count_unknown.load(Ordering::Relaxed);
 
     if output_json {
-        let packages = Arc::try_unwrap(results).unwrap().into_inner().unwrap();
+        let packages = collect_results(results);
         let output = ScanOutput {
             ecosystem: "aur".to_string(),
             packages,
@@ -442,7 +442,7 @@ pub fn search_and_display(query: &str, output_json: bool) {
             });
 
             if output_json {
-                let packages = Arc::try_unwrap(results).unwrap().into_inner().unwrap();
+                let packages = collect_results(results);
                 let output = ScanOutput {
                     ecosystem: "aur-search".to_string(),
                     packages,
