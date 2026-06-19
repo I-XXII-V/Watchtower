@@ -14,25 +14,67 @@ const GRAY:   &str = "\x1b[90m";
 const BOLD:   &str = "\x1b[1m";
 const RESET:  &str = "\x1b[0m";
 
+fn days_since_unix(ts: u64) -> i64 {
+    let then = std::time::UNIX_EPOCH + std::time::Duration::from_secs(ts);
+    let then = chrono::DateTime::<chrono::Utc>::from(then).naive_utc();
+    (Utc::now().naive_utc() - then).num_days()
+}
+
+fn score_from_days(days: i64) -> &'static str {
+    if days > 730 { "🪦" }
+    else if days > 365 { "🔴" }
+    else if days > 180 { "⚠️" }
+    else { "✅" }
+}
+
+/// Detect potential maintainer-takeover / supply-chain attack pattern:
+/// PKGBUILD diupdate recent (< 90 hari), tapi popularity rendah (< 5.0)
+/// dan ga punya maintainer (orphaned) atau maintainer baru.
+fn hijack_risk(pkg: &AurPackage) -> Option<String> {
+    let days = days_since_unix(pkg.lastmodified);
+    if days > 90 {
+        return None; // not recent enough to be suspicious
+    }
+    let is_orphaned = pkg.maintainer.as_deref().is_none_or(|m| m.is_empty());
+    let low_pop = pkg.popularity < 5.0;
+    let low_votes = pkg.numvotes < 10;
+
+    if is_orphaned && low_pop && low_votes {
+        return Some(format!(
+            "⚠️ Recently updated PKGBUILD ({}d ago) but ORPHANED with low popularity ({:.1}) — possible hijack risk",
+            days, pkg.popularity
+        ));
+    }
+    if is_orphaned && low_pop {
+        return Some(format!(
+            "⚠️ Recently updated PKGBUILD ({}d ago) but ORPHANED — verify maintainer",
+            days
+        ));
+    }
+    None
+}
+
 pub fn get_health(pkg: &AurPackage) -> &str {
+    // 1) Out-of-date flag on AUR — paling penting
     if pkg.outofdate.is_some() {
         return "⚠️";
     }
+
+    // 2) Coba GitHub last commit — paling akurat kalo ada
     if let Some(ref url) = pkg.url {
         if let Some((owner, repo)) = parse_github_repo(url) {
             if let Ok(gh) = fetch_github_info(&owner, &repo) {
                 let pushed = &gh.pushed_at[..10];
                 if let Ok(last) = NaiveDate::parse_from_str(pushed, "%Y-%m-%d") {
                     let days = (Utc::now().date_naive() - last).num_days();
-                    if days > 730 { return "🪦"; }
-                    else if days > 365 { return "🔴"; }
-                    else if days > 180 { return "⚠️"; }
-                    else { return "✅"; }
+                    return score_from_days(days);
                 }
             }
         }
     }
-    "❓"
+
+    // 3) Fallback: LastModified dari AUR — gratis, no rate limit
+    score_from_days(days_since_unix(pkg.lastmodified))
 }
 
 pub fn health_color(health: &str) -> &str {
@@ -61,9 +103,15 @@ pub fn fmt_downloads(n: u64) -> String {
 }
 
 fn get_stale_reason(pkg: &AurPackage) -> Option<String> {
+    let mut reasons = Vec::new();
+
+    // Out-of-date flag
     if pkg.outofdate.is_some() {
-        return Some("Marked out-of-date on AUR".to_string());
+        reasons.push("Marked out-of-date on AUR".to_string());
     }
+
+    // GitHub check
+    let mut used_github = false;
     if let Some(ref url) = pkg.url {
         if let Some((owner, repo)) = parse_github_repo(url) {
             match fetch_github_info(&owner, &repo) {
@@ -71,24 +119,44 @@ fn get_stale_reason(pkg: &AurPackage) -> Option<String> {
                     let pushed = &gh.pushed_at[..10];
                     if let Ok(last) = NaiveDate::parse_from_str(pushed, "%Y-%m-%d") {
                         let days = (Utc::now().date_naive() - last).num_days();
+                        used_github = true;
                         if days > 730 {
-                            return Some(format!("No GitHub activity in {} days — DEAD", days));
+                            reasons.push(format!("No GitHub activity in {} days — DEAD", days));
                         } else if days > 365 {
-                            return Some(format!("No GitHub activity in {} days — INACTIVE", days));
+                            reasons.push(format!("No GitHub activity in {} days — INACTIVE", days));
                         } else if days > 180 {
-                            return Some(format!("No GitHub activity in {} days — STALE", days));
+                            reasons.push(format!("No GitHub activity in {} days — STALE", days));
                         }
                     }
-                    None
                 }
-                Err(e) => Some(format!("GitHub fetch failed: {}", e)),
+                Err(e) => reasons.push(format!("GitHub fetch failed: {}", e)),
             }
         } else {
-            Some("Not a GitHub repository".to_string())
+            reasons.push("Not a GitHub repository — using AUR LastModified".to_string());
         }
     } else {
-        Some("No upstream URL".to_string())
+        reasons.push("No upstream URL — using AUR LastModified".to_string());
     }
+
+    // Fallback: AUR LastModified (if GitHub didn't give us a definitive answer)
+    if !used_github {
+        let days = days_since_unix(pkg.lastmodified);
+        if days > 730 {
+            reasons.push(format!("PKGBUILD not updated in {} days — DEAD", days));
+        } else if days > 365 {
+            reasons.push(format!("PKGBUILD not updated in {} days — INACTIVE", days));
+        } else if days > 180 {
+            reasons.push(format!("PKGBUILD not updated in {} days — STALE", days));
+        }
+    }
+
+    // Hijack risk signal
+    if let Some(hijack) = hijack_risk(pkg) {
+        reasons.push(hijack);
+    }
+
+    if reasons.is_empty() { None }
+    else { Some(reasons.join("\n   ")) }
 }
 
 #[derive(Serialize)]
