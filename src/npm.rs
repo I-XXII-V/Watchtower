@@ -440,7 +440,7 @@ pub fn scan_npm_deps(stale_only: bool, output_json: bool, ci: bool, licenses: bo
 
                     // Track license if --licenses is active
                     if licenses {
-                        track_license(&*licenses_map, reg.license.as_deref());
+                        track_license(&licenses_map, reg.license.as_deref());
                     }
 
                     if stale_only && !is_stale(health) && vulns.is_empty() {
@@ -585,7 +585,7 @@ pub fn scan_npm_deps(stale_only: bool, output_json: bool, ci: bool, licenses: bo
             cves: c,
         },
         licenses,
-        Some(&*licenses_map),
+        Some(&licenses_map),
         ci,
     );
 }

@@ -306,7 +306,7 @@ pub fn scan_pypi_deps(stale_only: bool, output_json: bool, ci: bool, licenses: b
 
                     // Track license if --licenses is active
                     if licenses {
-                        track_license(&*licenses_map, resp.info.license.as_deref());
+                        track_license(&licenses_map, resp.info.license.as_deref());
                     }
 
                     if stale_only && !is_stale(health) && vulns.is_empty() {
@@ -430,7 +430,7 @@ pub fn scan_pypi_deps(stale_only: bool, output_json: bool, ci: bool, licenses: b
             cves: c,
         },
         licenses,
-        Some(&*licenses_map),
+        Some(&licenses_map),
         ci,
     );
 }
