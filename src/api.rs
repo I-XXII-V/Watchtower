@@ -82,7 +82,11 @@ pub fn fetch_github_info(owner: &str, repo: &str) -> Result<GitHubRepo, String> 
     let text = response.text().map_err(|e| format!("Read error: {}", e))?;
 
     if !status.is_success() {
-        return Err(format!("HTTP {} — {}", status, text));
+        return Err(format!(
+            "HTTP {} — {}",
+            status,
+            &text[..200.min(text.len())]
+        ));
     }
 
     serde_json::from_str(&text).map_err(|e| {

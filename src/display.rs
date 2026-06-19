@@ -469,25 +469,42 @@ pub fn single_package_json(pkg_name: &str, output_json: bool) {
 
             let pkg = &response.results[0];
 
+            // Fetch GitHub info once — shared across health scoring and output
+            let gh_data: Option<(String, String, GitHubRepo)> = pkg.url.as_ref().and_then(|upstream_url| {
+                parse_github_repo(upstream_url).and_then(|(owner, repo)| {
+                    fetch_github_info(&owner, &repo)
+                        .ok()
+                        .map(|gh| (owner, repo, gh))
+                })
+            });
+
             if output_json {
-                let health_emoji = get_health(pkg);
-                let health_str = health_to_string(health_emoji);
-                let gh_output = pkg.url.as_ref().and_then(|upstream_url| {
-                    parse_github_repo(upstream_url).and_then(
-                        |(owner, repo)| match fetch_github_info(&owner, &repo) {
-                            Ok(gh) => Some(SingleGitHubOutput {
-                                owner: owner.clone(),
-                                repo: repo.clone(),
-                                stars: gh.stars,
-                                forks: gh.forks,
-                                open_issues: gh.open_issues,
-                                watchers: gh.watchers,
-                                pushed_at: gh.pushed_at,
-                                archived: gh.archived,
-                            }),
-                            Err(_) => None,
-                        },
-                    )
+                // Use cached GitHub data for health — avoids second API call
+                let health_str = match &gh_data {
+                    Some((_, _, gh)) => {
+                        if hijack_risk(pkg).is_some() {
+                            health_to_string("🚩")
+                        } else if pkg.outofdate.is_some() {
+                            health_to_string("⚠️")
+                        } else {
+                            let emoji = days_since_date_prefix(&gh.pushed_at)
+                                .map(score_from_days)
+                                .unwrap_or("❓");
+                            health_to_string(emoji)
+                        }
+                    }
+                    None => health_to_string(get_health(pkg)),
+                };
+
+                let gh_output = gh_data.map(|(owner, repo, gh)| SingleGitHubOutput {
+                    owner: owner.clone(),
+                    repo: repo.clone(),
+                    stars: gh.stars,
+                    forks: gh.forks,
+                    open_issues: gh.open_issues,
+                    watchers: gh.watchers,
+                    pushed_at: gh.pushed_at,
+                    archived: gh.archived,
                 });
 
                 let output = SinglePackageOutput {
@@ -508,15 +525,17 @@ pub fn single_package_json(pkg_name: &str, output_json: bool) {
             } else {
                 print_package_info(pkg);
 
-                if let Some(ref upstream_url) = pkg.url {
-                    if let Some((owner, repo)) = parse_github_repo(upstream_url) {
+                match &gh_data {
+                    Some((owner, repo, gh)) => {
                         println!("\n🐙 GitHub: {}/{}", owner, repo);
-                        match fetch_github_info(&owner, &repo) {
-                            Ok(gh) => print_github_info(&gh),
-                            Err(e) => eprintln!("   ❌ Fetch failed: {}", e),
+                        print_github_info(gh);
+                    }
+                    None => {
+                        if pkg.url.as_deref().is_some_and(|u| parse_github_repo(u).is_some()) {
+                            eprintln!("\n🐙 GitHub: fetch failed");
+                        } else if pkg.url.is_some() {
+                            println!("\n🐙 GitHub: not a GitHub repository");
                         }
-                    } else {
-                        println!("\n🐙 GitHub: not a GitHub repository");
                     }
                 }
             }
