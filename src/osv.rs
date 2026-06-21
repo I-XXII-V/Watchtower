@@ -4,6 +4,7 @@
 //!
 //! Supports ecosystems: crates.io, npm, PyPI, Go, and many more.
 
+use crate::api::http_client;
 use crate::cache;
 use crate::types::VulnInfo;
 use serde::Deserialize;
@@ -77,8 +78,7 @@ pub fn query_package(ecosystem: &str, name: &str, version: &str) -> Vec<VulnInfo
         "version": version,
     });
 
-    let client = reqwest::blocking::Client::new();
-    let resp = match client
+    let resp = match http_client()
         .post(url)
         .header("User-Agent", "watchtower")
         .json(&body)

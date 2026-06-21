@@ -504,7 +504,7 @@ pub fn scan_npm_deps(stale_only: bool, output_json: bool, ci: bool, licenses: bo
                     let provenance = fetch_npm_attestation(&pkg_name, &pkg_version);
 
                     if output_json {
-                        let mut r = results.lock().unwrap();
+                        let mut r = results.lock().expect("results mutex poisoned");
                         r.push(PackageResult {
                             name: pkg_name.clone(),
                             version: pkg_version.clone(),
@@ -597,7 +597,7 @@ pub fn scan_npm_deps(stale_only: bool, output_json: bool, ci: bool, licenses: bo
                 Err(e) => {
                     count_unknown.fetch_add(1, Ordering::Relaxed);
                     if output_json {
-                        let mut r = results.lock().unwrap();
+                        let mut r = results.lock().expect("results mutex poisoned");
                         r.push(PackageResult {
                             name: pkg_name.clone(),
                             version: pkg_version.clone(),

@@ -272,7 +272,7 @@ pub fn scan_cargo_deps(stale_only: bool, output_json: bool, ci: bool, licenses: 
 
                         // JSON output
                         if output_json {
-                            let mut r = results.lock().unwrap();
+                            let mut r = results.lock().expect("results mutex poisoned");
                             r.push(PackageResult {
                                 name: name.clone(),
                                 version: version.clone(),
@@ -350,7 +350,7 @@ pub fn scan_cargo_deps(stale_only: bool, output_json: bool, ci: bool, licenses: 
                     Err(e) => {
                         count_unknown.fetch_add(1, Ordering::Relaxed);
                         if output_json {
-                            let mut r = results.lock().unwrap();
+                            let mut r = results.lock().expect("results mutex poisoned");
                             r.push(PackageResult {
                                 name: name.clone(),
                                 version: version.clone(),

@@ -1,4 +1,4 @@
-use crate::api::*;
+use crate::api::{fetch_aur_info, fetch_github_info, parse_github_repo, search_aur, AurPackage, GitHubRepo};
 use crate::types::{
     collect_results, days_since_date_prefix, days_since_unix, health_to_string, score_from_days,
     PackageResult, ScanOutput, Summary,
@@ -43,7 +43,7 @@ fn hijack_risk(pkg: &AurPackage) -> Option<String> {
     None
 }
 
-pub fn get_health(pkg: &AurPackage) -> &str {
+pub fn get_health(pkg: &AurPackage, gh: Option<&GitHubRepo>) -> &'static str {
     // 0) Hijack risk — override apapun, duluan
     if hijack_risk(pkg).is_some() {
         return "🚩";
@@ -54,8 +54,16 @@ pub fn get_health(pkg: &AurPackage) -> &str {
         return "⚠️";
     }
 
-    // 2) Coba GitHub last commit
-    if let Some(ref url) = pkg.url {
+    // 2) Cached GitHub last commit (fetched once by caller)
+    if let Some(gh) = gh {
+        if let Some(days) = days_since_date_prefix(&gh.pushed_at) {
+            return score_from_days(days);
+        }
+        return score_from_days(days_since_unix(pkg.lastmodified));
+    }
+
+    // 3) No cached data — fetch GitHub ourselves
+    if let Some(url) = &pkg.url {
         if let Some((owner, repo)) = parse_github_repo(url) {
             if let Ok(gh) = fetch_github_info(&owner, &repo) {
                 if let Some(days) = days_since_date_prefix(&gh.pushed_at) {
@@ -65,7 +73,7 @@ pub fn get_health(pkg: &AurPackage) -> &str {
         }
     }
 
-    // 3) Fallback: AUR LastModified
+    // 4) Fallback: AUR LastModified
     score_from_days(days_since_unix(pkg.lastmodified))
 }
 
@@ -94,7 +102,7 @@ pub fn fmt_downloads(n: u64) -> String {
     }
 }
 
-fn get_stale_reason(pkg: &AurPackage) -> Option<String> {
+fn get_stale_reason(pkg: &AurPackage, gh: Option<&GitHubRepo>) -> Option<String> {
     let mut reasons = Vec::new();
 
     // Out-of-date flag
@@ -102,9 +110,20 @@ fn get_stale_reason(pkg: &AurPackage) -> Option<String> {
         reasons.push("Marked out-of-date on AUR".to_string());
     }
 
-    // GitHub check
+    // GitHub check (use cached data if provided, otherwise fetch)
     let mut used_github = false;
-    if let Some(ref url) = pkg.url {
+    if let Some(gh) = gh {
+        used_github = true;
+        if let Some(days) = days_since_date_prefix(&gh.pushed_at) {
+            if days > 730 {
+                reasons.push(format!("No GitHub activity in {} days — DEAD", days));
+            } else if days > 365 {
+                reasons.push(format!("No GitHub activity in {} days — INACTIVE", days));
+            } else if days > 180 {
+                reasons.push(format!("No GitHub activity in {} days — STALE", days));
+            }
+        }
+    } else if let Some(ref url) = pkg.url {
         if let Some((owner, repo)) = parse_github_repo(url) {
             match fetch_github_info(&owner, &repo) {
                 Ok(gh) => {
@@ -216,7 +235,13 @@ pub fn scan_installed(stale_only: bool, output_json: bool, ci: bool) {
                 match fetch_aur_info(&url) {
                     Ok(response) if response.resultcount > 0 => {
                         let pkg = &response.results[0];
-                        let health = get_health(pkg);
+
+                        // Fetch GitHub info ONCE — shared by health + stale_reason
+                        let gh_data: Option<GitHubRepo> = pkg.url.as_ref()
+                            .and_then(|url| parse_github_repo(url))
+                            .and_then(|(owner, repo)| fetch_github_info(&owner, &repo).ok());
+
+                        let health = get_health(pkg, gh_data.as_ref());
 
                         match health {
                             "✅" => {
@@ -244,14 +269,14 @@ pub fn scan_installed(stale_only: bool, output_json: bool, ci: bool) {
                         }
 
                         if output_json {
-                            let mut r = results.lock().unwrap();
+                            let mut r = results.lock().expect("results mutex poisoned");
                             r.push(PackageResult {
                                 name: pkg.name.clone(),
                                 version: pkg.version.clone(),
                                 health: health_to_string(health),
                                 description: pkg.description.clone(),
                                 latest_version: None,
-                                stale_reason: get_stale_reason(pkg),
+                                stale_reason: get_stale_reason(pkg, gh_data.as_ref()),
                                 vulns: vec![],
                                 provenance: None,
                             });
@@ -264,7 +289,7 @@ pub fn scan_installed(stale_only: bool, output_json: bool, ci: bool) {
                         };
 
                         let stale_info = if stale_only {
-                            get_stale_reason(pkg)
+                            get_stale_reason(pkg, gh_data.as_ref())
                                 .map(|r| format!("\n   {}└─ {}{}", GRAY, r, RESET))
                                 .unwrap_or_default()
                         } else {
@@ -285,7 +310,7 @@ pub fn scan_installed(stale_only: bool, output_json: bool, ci: bool) {
                     _ => {
                         count_unknown.fetch_add(1, Ordering::Relaxed);
                         if output_json {
-                            let mut r = results.lock().unwrap();
+                            let mut r = results.lock().expect("results mutex poisoned");
                             r.push(PackageResult {
                                 name: name.clone(),
                                 version: "?".to_string(),
@@ -380,8 +405,8 @@ pub fn search_and_display(query: &str, output_json: bool) {
                     s.spawn(move || {
                         if output_json {
                             // JSON path: just compute health string (single GitHub call inside)
-                            let health = get_health(pkg);
-                            let mut r = results.lock().unwrap();
+                            let health = get_health(pkg, None);
+                            let mut r = results.lock().expect("results mutex poisoned");
                             r.push(PackageResult {
                                 name: pkg.name.clone(),
                                 version: pkg.version.clone(),
@@ -414,15 +439,23 @@ pub fn search_and_display(query: &str, output_json: bool) {
                                         (h, format!("⭐ {}", gh.stars))
                                     }
                                     Err(_) => {
-                                        let h = get_health(pkg);
+                                        // GitHub fetch failed — fall back to AUR data directly,
+                                        // don't re-call get_health() which would retry GitHub
+                                        let h = if hijack_risk(pkg).is_some() {
+                                            "🚩"
+                                        } else if pkg.outofdate.is_some() {
+                                            "⚠️"
+                                        } else {
+                                            score_from_days(days_since_unix(pkg.lastmodified))
+                                        };
                                         (h, String::new())
                                     }
                                 }
                             } else {
-                                (get_health(pkg), String::new())
+                                (get_health(pkg, None), String::new())
                             }
                         } else {
-                            (get_health(pkg), String::new())
+                            (get_health(pkg, None), String::new())
                         };
 
                         let stars_display = if stars.is_empty() {
@@ -514,7 +547,7 @@ pub fn single_package_json(pkg_name: &str, output_json: bool) {
                             health_to_string(emoji)
                         }
                     }
-                    None => health_to_string(get_health(pkg)),
+                    None => health_to_string(get_health(pkg, None)),
                 };
 
                 let gh_output = gh_data.map(|(owner, repo, gh)| SingleGitHubOutput {

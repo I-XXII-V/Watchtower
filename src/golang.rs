@@ -258,7 +258,7 @@ pub fn scan_go_deps(stale_only: bool, output_json: bool, ci: bool, licenses: boo
 
                     if output_json {
                         let sr = hijack.clone().or(stale_reason_raw);
-                        let mut r = results.lock().unwrap();
+                        let mut r = results.lock().expect("results mutex poisoned");
                         r.push(PackageResult {
                             name: mod_name.clone(),
                             version: mod_version.clone(),
@@ -331,7 +331,7 @@ pub fn scan_go_deps(stale_only: bool, output_json: bool, ci: bool, licenses: boo
                 Err(e) => {
                     count_unknown.fetch_add(1, Ordering::Relaxed);
                     if output_json {
-                        let mut r = results.lock().unwrap();
+                        let mut r = results.lock().expect("results mutex poisoned");
                         r.push(PackageResult {
                             name: mod_name.clone(),
                             version: mod_version.clone(),

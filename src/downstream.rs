@@ -1,3 +1,4 @@
+use crate::api::{http_client, safe_prefix};
 use crate::display::fmt_downloads;
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -43,8 +44,7 @@ fn fetch_crate_rev_deps(name: &str) -> Result<CrateRevDeps, String> {
         name
     );
 
-    let client = reqwest::blocking::Client::new();
-    let resp = client
+    let resp = http_client()
         .get(&url)
         .header("User-Agent", "watchtower")
         .send()
@@ -54,11 +54,7 @@ fn fetch_crate_rev_deps(name: &str) -> Result<CrateRevDeps, String> {
     let text = resp.text().map_err(|e| format!("Read error: {}", e))?;
 
     if !status.is_success() {
-        return Err(format!(
-            "HTTP {} — {}",
-            status,
-            &text[..200.min(text.len())]
-        ));
+        return Err(format!("HTTP {} — {}", status, safe_prefix(&text, 200)));
     }
 
     serde_json::from_str(&text).map_err(|e| format!("JSON error: {}", e))

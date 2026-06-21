@@ -48,13 +48,13 @@ pub fn track_license(map: &Mutex<HashMap<String, u32>>, license_field: Option<&s
         Some(lic) if !lic.is_empty() => lic.to_string(),
         _ => "Unknown".to_string(),
     };
-    let mut lm = map.lock().unwrap();
+    let mut lm = map.lock().expect("license map mutex poisoned");
     *lm.entry(key).or_insert(0) += 1;
 }
 
 /// Print the aggregated license breakdown.
 pub fn print_license_summary(map: &Mutex<HashMap<String, u32>>) {
-    let guard = map.lock().unwrap();
+    let guard = map.lock().expect("license map mutex poisoned");
     if guard.is_empty() {
         return;
     }
@@ -143,6 +143,7 @@ pub fn collect_results(results: Arc<Mutex<Vec<PackageResult>>>) -> Vec<PackageRe
         }
     }
 }
+
 
 /// Print the end-of-scan summary (JSON or text), license breakdown, and CI exit.
 ///
