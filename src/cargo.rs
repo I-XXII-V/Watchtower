@@ -1,5 +1,5 @@
 use crate::api::{fetch_github_info, http_client, parse_github_repo, safe_prefix, GitHubRepo};
-use crate::display::{fmt_downloads, health_color, is_stale};
+use crate::display::{fmt_downloads, health_color, health_sort_key, is_stale, DisplayEntry};
 use crate::osv;
 use crate::types::{
     collect_results, days_since_date_prefix, health_to_string, print_summary, score_from_days,
@@ -207,7 +207,7 @@ pub(crate) fn scan_single(name: &str, version: &str) -> PackageResult {
 
 // ── Public entry point ───────────────────────────────────────────────
 
-pub fn scan_cargo_deps(stale_only: bool, output_json: bool, ci: bool, licenses: bool) {
+pub fn scan_cargo_deps(stale_only: bool, output_json: bool, ci: bool, licenses: bool, verbose: bool) {
     let lock_path = "Cargo.lock";
 
     if fs::metadata(lock_path).is_err() {
@@ -260,6 +260,7 @@ pub fn scan_cargo_deps(stale_only: bool, output_json: bool, ci: bool, licenses: 
     let count_cves = &AtomicU32::new(0);
 
     let results: Arc<Mutex<Vec<PackageResult>>> = Arc::new(Mutex::new(Vec::new()));
+    let text_lines: Arc<Mutex<Vec<DisplayEntry>>> = Arc::new(Mutex::new(Vec::new()));
     let licenses_map: Arc<Mutex<HashMap<String, u32>>> = Arc::new(Mutex::new(HashMap::new()));
 
     thread::scope(|s| {
@@ -267,6 +268,7 @@ pub fn scan_cargo_deps(stale_only: bool, output_json: bool, ci: bool, licenses: 
             let name = pkg_name.clone();
             let version = pkg_version.clone();
             let results = Arc::clone(&results);
+            let text_lines = Arc::clone(&text_lines);
             let licenses_map = Arc::clone(&licenses_map);
             s.spawn(move || {
                 match fetch_crate_info(&name) {
@@ -388,8 +390,19 @@ pub fn scan_cargo_deps(stale_only: bool, output_json: bool, ci: bool, licenses: 
                             extra.push_str("\x1b[0m");
                         }
 
-                        println!(
-                            "{}{}\x1b[0m {} v{} — {}, downloads: {}{}",
+                        // Days since (Change 3)
+                        let days_since = if health == "⚠️" || health == "🔴" || health == "🪦" {
+                            days_since_date_prefix(&data.updated_at)
+                                .or_else(|| gh_info.as_ref().and_then(|gh| days_since_date_prefix(&gh.pushed_at)))
+                        } else {
+                            None
+                        };
+                        let days_str = days_since
+                            .map(|d| format!(" \x1b[90m— {} days ago\x1b[0m", d))
+                            .unwrap_or_default();
+
+                        let line = format!(
+                            "{}{}\x1b[0m {} v{} — {}, downloads: {}{}{}",
                             health_color(health),
                             health,
                             name,
@@ -397,7 +410,14 @@ pub fn scan_cargo_deps(stale_only: bool, output_json: bool, ci: bool, licenses: 
                             desc,
                             downloads,
                             extra,
+                            days_str,
                         );
+
+                        let mut t = text_lines.lock().expect("text_lines mutex poisoned");
+                        t.push(DisplayEntry {
+                            health_emoji: health.to_string(),
+                            line,
+                        });
                     }
                     Err(e) => {
                         count_unknown.fetch_add(1, Ordering::Relaxed);
@@ -414,10 +434,15 @@ pub fn scan_cargo_deps(stale_only: bool, output_json: bool, ci: bool, licenses: 
                                 provenance: None,
                             });
                         } else if !stale_only {
-                            println!(
+                            let line = format!(
                                 "\x1b[90m❓ {} v{} — fetch failed: {}\x1b[0m",
                                 name, version, e
                             );
+                            let mut t = text_lines.lock().expect("text_lines mutex poisoned");
+                            t.push(DisplayEntry {
+                                health_emoji: "❓".to_string(),
+                                line,
+                            });
                         }
                     }
                 }
@@ -431,6 +456,29 @@ pub fn scan_cargo_deps(stale_only: bool, output_json: bool, ci: bool, licenses: 
     let d = count_dead.load(Ordering::Relaxed);
     let u = count_unknown.load(Ordering::Relaxed);
     let c = count_cves.load(Ordering::Relaxed);
+
+    if !output_json {
+        let mut entries = text_lines.lock().expect("text_lines mutex poisoned");
+        let mut taken: Vec<DisplayEntry> = std::mem::take(&mut *entries);
+        taken.sort_by_key(|e| health_sort_key(&e.health_emoji));
+
+        let known_count = taken.iter().filter(|e| e.health_emoji != "❓").count();
+        for entry in &taken {
+            if entry.health_emoji == "❓" { continue; }
+            println!("{}", entry.line);
+        }
+
+        if u > 0 && !stale_only {
+            if verbose {
+                for entry in &taken {
+                    if entry.health_emoji == "❓" { println!("{}", entry.line); }
+                }
+            } else if known_count > 0 {
+                println!();
+                println!("\x1b[90m❓ {} packages failed to fetch — run with --verbose to see details\x1b[0m", u);
+            }
+        }
+    }
 
     let packages = collect_results(results);
 

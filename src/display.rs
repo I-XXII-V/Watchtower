@@ -16,6 +16,26 @@ const GRAY: &str = "\x1b[90m";
 const BOLD: &str = "\x1b[1m";
 const RESET: &str = "\x1b[0m";
 
+/// A pre-formatted display line for text output, carrying its health
+/// emoji so the collector can sort by severity after all threads finish.
+#[derive(Clone)]
+pub struct DisplayEntry {
+    pub health_emoji: String,
+    pub line: String,
+}
+
+/// Sort key for `DisplayEntry` ordering (worst first).
+pub fn health_sort_key(emoji: &str) -> u8 {
+    match emoji {
+        "🪦" => 0,
+        "🔴" => 1,
+        "⚠️" => 2,
+        "🚩" => 3,
+        "❓" => 4,
+        _ => 5, // ✅
+    }
+}
+
 /// Detect potential maintainer-takeover / supply-chain attack pattern:
 /// PKGBUILD diupdate recent (< 90 hari), tapi popularity rendah (< 5.0)
 /// dan ga punya maintainer (orphaned) atau maintainer baru.
@@ -201,7 +221,7 @@ struct SingleGitHubOutput {
 
 // ── Scan installed AUR packages ──────────────────────────────────────
 
-pub fn scan_installed(stale_only: bool, output_json: bool, ci: bool) {
+pub fn scan_installed(stale_only: bool, output_json: bool, ci: bool, verbose: bool) {
     let output = std::process::Command::new("pacman")
         .args(["-Qm"])
         .output()
@@ -225,11 +245,13 @@ pub fn scan_installed(stale_only: bool, output_json: bool, ci: bool) {
     let count_unknown = &AtomicU32::new(0);
 
     let results: Arc<Mutex<Vec<PackageResult>>> = Arc::new(Mutex::new(Vec::new()));
+    let text_lines: Arc<Mutex<Vec<DisplayEntry>>> = Arc::new(Mutex::new(Vec::new()));
 
     thread::scope(|s| {
         for pkg_name in &packages {
             let name = pkg_name.clone();
             let results = Arc::clone(&results);
+            let text_lines = Arc::clone(&text_lines);
             s.spawn(move || {
                 let url = format!("https://aur.archlinux.org/rpc/v5/info/{}", name);
                 match fetch_aur_info(&url) {
@@ -296,16 +318,35 @@ pub fn scan_installed(stale_only: bool, output_json: bool, ci: bool) {
                             String::new()
                         };
 
-                        println!(
-                            "{}{}{} {} — maintainer: {}, popularity: {:.1}{}",
+                        // Days since last update (Change 3)
+                        let days_since = if health == "⚠️" || health == "🔴" || health == "🪦" {
+                            gh_data.as_ref()
+                                .and_then(|gh| days_since_date_prefix(&gh.pushed_at))
+                                .or_else(|| Some(days_since_unix(pkg.lastmodified)))
+                        } else {
+                            None
+                        };
+                        let days_str = days_since
+                            .map(|d| format!(" {}— {} days ago{}", GRAY, d, RESET))
+                            .unwrap_or_default();
+
+                        let line = format!(
+                            "{}{}{} {} — maintainer: {}, popularity: {:.1}{}{}",
                             health_color(health),
                             health,
                             RESET,
                             pkg.name,
                             maintainer_str,
                             pkg.popularity,
-                            stale_info
+                            stale_info,
+                            days_str,
                         );
+
+                        let mut t = text_lines.lock().expect("text_lines mutex poisoned");
+                        t.push(DisplayEntry {
+                            health_emoji: health.to_string(),
+                            line,
+                        });
                     }
                     _ => {
                         count_unknown.fetch_add(1, Ordering::Relaxed);
@@ -322,7 +363,12 @@ pub fn scan_installed(stale_only: bool, output_json: bool, ci: bool) {
                                 provenance: None,
                             });
                         } else if !stale_only {
-                            println!("{}❓ {} — {}fetch failed{}", GRAY, name, GRAY, RESET);
+                            let line = format!("{}❓ {} — {}fetch failed{}", GRAY, name, GRAY, RESET);
+                            let mut t = text_lines.lock().expect("text_lines mutex poisoned");
+                            t.push(DisplayEntry {
+                                health_emoji: "❓".to_string(),
+                                line,
+                            });
                         }
                     }
                 }
@@ -354,6 +400,33 @@ pub fn scan_installed(stale_only: bool, output_json: bool, ci: bool) {
         };
         println!("{}", serde_json::to_string_pretty(&output).unwrap());
     } else {
+        // Sort and print text output
+        let mut entries = text_lines.lock().expect("text_lines mutex poisoned");
+        let mut taken: Vec<DisplayEntry> = std::mem::take(&mut *entries);
+        taken.sort_by_key(|e| health_sort_key(&e.health_emoji));
+
+        let known_count = taken.iter().filter(|e| e.health_emoji != "❓").count();
+        for entry in &taken {
+            if entry.health_emoji == "❓" {
+                continue;
+            }
+            println!("{}", entry.line);
+        }
+
+        // ❓ summary (Change 2)
+        if u > 0 && !stale_only {
+            if verbose {
+                for entry in &taken {
+                    if entry.health_emoji == "❓" {
+                        println!("{}", entry.line);
+                    }
+                }
+            } else if known_count > 0 {
+                println!();
+                println!("{}❓ {} packages failed to fetch — run with --verbose to see details{}", GRAY, u, RESET);
+            }
+        }
+
         let hijack_part = if j > 0 {
             format!("  {}🚩 {}{}", RED, j, RESET)
         } else {

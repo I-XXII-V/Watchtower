@@ -73,6 +73,10 @@ struct Cli {
     #[arg(long = "licenses")]
     licenses: bool,
 
+    /// Show fetch errors and unknown packages
+    #[arg(short = 'v', long = "verbose")]
+    verbose: bool,
+
     /// Show detailed health info for an AUR package
     package: Option<String>,
 
@@ -146,19 +150,19 @@ fn main() {
 
     // Ecosystem scan flags
     if cli.cargo {
-        cargo::scan_cargo_deps(cli.stale, cli.json, cli.ci, cli.licenses);
+        cargo::scan_cargo_deps(cli.stale, cli.json, cli.ci, cli.licenses, cli.verbose);
         return;
     }
     if cli.npm {
-        npm::scan_npm_deps(cli.stale, cli.json, cli.ci, cli.licenses);
+        npm::scan_npm_deps(cli.stale, cli.json, cli.ci, cli.licenses, cli.verbose);
         return;
     }
     if cli.pypi {
-        pypi::scan_pypi_deps(cli.stale, cli.json, cli.ci, cli.licenses);
+        pypi::scan_pypi_deps(cli.stale, cli.json, cli.ci, cli.licenses, cli.verbose);
         return;
     }
     if cli.go {
-        golang::scan_go_deps(cli.stale, cli.json, cli.ci, cli.licenses);
+        golang::scan_go_deps(cli.stale, cli.json, cli.ci, cli.licenses, cli.verbose);
         return;
     }
 
@@ -170,7 +174,7 @@ fn main() {
 
     // --stale with no ecosystem flag → scan AUR (stale only)
     if cli.stale {
-        scan_installed(true, cli.json, cli.ci);
+        scan_installed(true, cli.json, cli.ci, cli.verbose);
         return;
     }
 
@@ -181,5 +185,5 @@ fn main() {
     }
 
     // Default: scan all AUR packages
-    scan_installed(false, cli.json, cli.ci);
+    scan_installed(false, cli.json, cli.ci, cli.verbose);
 }

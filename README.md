@@ -14,6 +14,12 @@ blight --cargo
 # who depends on serde?
 blight who-depends serde
 
+# what changed since last commit?
+blight diff
+
+# compare against a specific ref
+blight diff v1.0
+
 # JSON for jq
 blight --cargo --json | jq '.packages[] | select(.health == "dead")'
 
@@ -39,6 +45,7 @@ blight [OPTIONS] [PACKAGE] [COMMAND]
 
 Commands:
   who-depends  Show crates that depend on a given crate
+  diff         Show dependency changes between git revisions with health info
 
 Arguments:
   <PACKAGE>           Show detailed info for an AUR package
@@ -118,6 +125,28 @@ blight wd tokio
 ```
 
 See who else is living dangerously by depending on the same things you do.
+
+### Dependency diff
+
+```bash
+# compare current deps against the last commit
+blight diff
+
+# pick an ecosystem explicitly
+blight diff --cargo
+
+# compare against a specific branch or tag
+blight diff main
+blight diff v1.0
+
+# use rev-parse style refs too
+blight diff --npm HEAD~3
+blight diff --go HEAD
+```
+
+Shows what was **added**, **upgraded**, and **removed** between two points in git history. Only the changed dependencies get health-scored, so you can see whether that upgrade introduced something worse without scrolling past 300 packages that haven't moved.
+
+Uses `git show` internally — no extra tools, no copy-pasting lockfiles between branches. Ecosystem auto-detection works the same as the main command. When you don't specify `OLD_REF`, it defaults to `HEAD~1` (the last commit).
 
 ## CVE scanning
 
