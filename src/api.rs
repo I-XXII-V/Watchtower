@@ -12,7 +12,7 @@ pub fn http_client() -> &'static reqwest::blocking::Client {
     CLIENT.get_or_init(|| {
         reqwest::blocking::Client::builder()
             .timeout(Duration::from_secs(30))
-            .user_agent("ossuary")
+            .user_agent("gravedigger")
             .build()
             .expect("reqwest client build should never fail")
     })

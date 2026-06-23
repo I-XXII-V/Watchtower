@@ -1,37 +1,37 @@
-# Ossuary
+# Gravedigger
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![CI](https://img.shields.io/github/actions/workflow/status/I-XXII-V/Ossuary/rust.yml?branch=main)](https://github.com/I-XXII-V/Ossuary/actions)
+[![CI](https://img.shields.io/github/actions/workflow/status/I-XXII-V/Gravedigger/rust.yml?branch=main)](https://github.com/I-XXII-V/Gravedigger/actions)
 
 
 ```bash
 # scan AUR packages (default)
-ossuary
+gravedigger
 
 # scan Rust project
-ossuary --cargo
+gravedigger --cargo
 
 # who depends on serde?
-ossuary who-depends serde
+gravedigger who-depends serde
 
 # what changed since last commit?
-ossuary diff
+gravedigger diff
 
 # compare against a specific ref
-ossuary diff v1.0
+gravedigger diff v1.0
 
 # JSON for jq
-ossuary --cargo --json | jq '.packages[] | select(.health == "dead")'
+gravedigger --cargo --json | jq '.packages[] | select(.health == "dead")'
 
 # CI mode — exit 1 if anything is dead or has CVEs
-ossuary --npm --ci
+gravedigger --npm --ci
 ```
 
 ## Install
 
 **Binary:**
 ```bash
-cargo install --git https://github.com/I-XXII-V/Ossuary
+cargo install --git https://github.com/I-XXII-V/Gravedigger
 ```
 
 
@@ -41,7 +41,7 @@ AUR scanning needs `pacman -Qm`, so it's Arch-only. The rest (Cargo, npm, PyPI, 
 ## Usage
 
 ```text
-ossuary [OPTIONS] [PACKAGE] [COMMAND]
+gravedigger [OPTIONS] [PACKAGE] [COMMAND]
 
 Commands:
   who-depends  Show crates that depend on a given crate
@@ -68,19 +68,19 @@ Options:
 
 ```bash
 # question your life choices
-ossuary --cargo
-ossuary --npm
-ossuary --pypi
-ossuary --go
+gravedigger --cargo
+gravedigger --npm
+gravedigger --pypi
+gravedigger --go
 
 # ignore the healthy ones, focus on the dumpster fire
-ossuary --cargo --stale
+gravedigger --cargo --stale
 
 # make CI fail because someone didn't update their crate since 2021
-ossuary --go --ci
+gravedigger --go --ci
 
 # see what licenses you're violating
-ossuary --npm --licenses
+gravedigger --npm --licenses
 ```
 
 With `--stale`, each package explains why it's rotting:
@@ -101,18 +101,18 @@ AUR packages get multiple reasons when needed — including the LastModified fal
 With `--json`, you can pipe it somewhere that makes you look productive:
 
 ```bash
-ossuary --cargo --json | jq '.summary'
-ossuary --cargo --json | jq '.packages[] | select(.health == "dead") | .name'
-ossuary --cargo --stale --json | jq '.packages[].stale_reason'
-ossuary --json | jq '.summary.hijack'          # AUR: hijack count
+gravedigger --cargo --json | jq '.summary'
+gravedigger --cargo --json | jq '.packages[] | select(.health == "dead") | .name'
+gravedigger --cargo --stale --json | jq '.packages[].stale_reason'
+gravedigger --json | jq '.summary.hijack'          # AUR: hijack count
 ```
 
 ### Single package info
 
 ```bash
-ossuary yay
-ossuary neovim
-ossuary --aur rust-analyzer
+gravedigger yay
+gravedigger neovim
+gravedigger --aur rust-analyzer
 ```
 
 Shows AUR metadata plus GitHub stars, forks, last commit, and archive status. Basically a digital obituary.
@@ -120,8 +120,8 @@ Shows AUR metadata plus GitHub stars, forks, last commit, and archive status. Ba
 ### Reverse dependencies
 
 ```bash
-ossuary who-depends serde
-ossuary wd tokio
+gravedigger who-depends serde
+gravedigger wd tokio
 ```
 
 See who else is living dangerously by depending on the same things you do.
@@ -130,18 +130,18 @@ See who else is living dangerously by depending on the same things you do.
 
 ```bash
 # compare current deps against the last commit
-ossuary diff
+gravedigger diff
 
 # pick an ecosystem explicitly
-ossuary diff --cargo
+gravedigger diff --cargo
 
 # compare against a specific branch or tag
-ossuary diff main
-ossuary diff v1.0
+gravedigger diff main
+gravedigger diff v1.0
 
 # use rev-parse style refs too
-ossuary diff --npm HEAD~3
-ossuary diff --go HEAD
+gravedigger diff --npm HEAD~3
+gravedigger diff --go HEAD
 ```
 
 Shows what was **added**, **upgraded**, and **removed** between two points in git history. Only the changed dependencies get health-scored, so you can see whether that upgrade introduced something worse without scrolling past 300 packages that haven't moved.
@@ -150,7 +150,7 @@ Uses `git show` internally — no extra tools, no copy-pasting lockfiles between
 
 ## CVE scanning
 
-Ossuary checks CVEs via [OSV.dev](https://osv.dev) for each dependency. Supported for Cargo, npm, PyPI, and Go. AUR is skipped — OSV doesn't support it.
+Gravedigger checks CVEs via [OSV.dev](https://osv.dev) for each dependency. Supported for Cargo, npm, PyPI, and Go. AUR is skipped — OSV doesn't support it.
 
 If there's a CVE, you'll see it:
 
@@ -160,7 +160,7 @@ If there's a CVE, you'll see it:
 
 Use `--ci` to exit with code 1 when CVEs are found. Because deploying known vulnerabilities to production is a bold strategy, Cotton. Let's see if it pays off for 'em.
 
-Results are cached in `~/.cache/ossuary/`. Second scan is faster. First scan is still faster than reading the actual CVE descriptions.
+Results are cached in `~/.cache/gravedigger/`. Second scan is faster. First scan is still faster than reading the actual CVE descriptions.
 
 ## Health scoring
 
@@ -177,7 +177,7 @@ For AUR packages:
 
 This means even without a `GITHUB_TOKEN`, all your AUR packages get scored from the PKGBUILD modification date instead of showing ❓.
 
-Additional AUR signal: if a PKGBUILD was updated recently (< 90 days) but the package is orphaned with low popularity, Ossuary flags a potential **maintainer takeover / supply-chain hijack** risk (🚩). These show up separately in the summary so they don't get lost in the warning count:
+Additional AUR signal: if a PKGBUILD was updated recently (< 90 days) but the package is orphaned with low popularity, Gravedigger flags a potential **maintainer takeover / supply-chain hijack** risk (🚩). These show up separately in the summary so they don't get lost in the warning count:
 
 ```
 📊 Summary: ✅ 12  ⚠️ 5  🚩 2  🔴 1  🪦 0  ❓ 39

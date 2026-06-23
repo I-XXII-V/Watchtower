@@ -349,6 +349,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "gravedigger"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "chrono",
+ "clap",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "toml",
+]
+
+[[package]]
 name = "h2"
 version = "0.4.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -787,20 +801,6 @@ dependencies = [
  "libc",
  "pkg-config",
  "vcpkg",
-]
-
-[[package]]
-name = "ossuary"
-version = "0.1.0"
-dependencies = [
- "base64",
- "chrono",
- "clap",
- "reqwest",
- "serde",
- "serde_json",
- "tempfile",
- "toml",
 ]
 
 [[package]]

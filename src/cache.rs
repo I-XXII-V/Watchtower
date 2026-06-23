@@ -22,7 +22,7 @@ impl Cache {
         } else {
             PathBuf::from("/tmp")
         };
-        let base = base.join("ossuary");
+        let base = base.join("gravedigger");
         let _ = fs::create_dir_all(&base);
         Self { base }
     }

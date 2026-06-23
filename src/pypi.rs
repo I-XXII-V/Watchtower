@@ -204,7 +204,7 @@ fn fetch_pypi_info(name: &str) -> Result<PyPIResponse, String> {
     let url = format!("https://pypi.org/pypi/{}/json", name);
     let resp = http_client()
         .get(&url)
-        .header("User-Agent", "ossuary")
+        .header("User-Agent", "gravedigger")
         .send()
         .map_err(|e| format!("Network error: {}", e))?;
 

@@ -155,7 +155,7 @@ fn fetch_go_proxy(mod_path: &str) -> Result<GoProxyResponse, String> {
 
     let resp = http_client()
         .get(&url)
-        .header("User-Agent", "ossuary")
+        .header("User-Agent", "gravedigger")
         .send()
         .map_err(|e| format!("Network error: {}", e))?;
 
