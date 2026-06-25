@@ -2,6 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Crates.io](https://img.shields.io/crates/v/gravedigger)](https://crates.io/crates/gravedigger)
+[![CI](https://img.shields.io/github/actions/workflow/status/I-XXII-V/gravedigger/rust.yml?branch=main)](https://github.com/I-XXII-V/gravedigger/actions)
 
 
 ```bash

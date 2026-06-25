@@ -104,6 +104,8 @@ enum VulnDelta {
 
 // ── Parsing ──────────────────────────────────────────────────────────
 
+type SbomIndex = (HashMap<String, Component>, HashMap<String, Vuln>);
+
 fn extract_property(props: &[Property], name: &str) -> String {
     props
         .iter()
@@ -112,7 +114,7 @@ fn extract_property(props: &[Property], name: &str) -> String {
         .unwrap_or_default()
 }
 
-fn parse_file(path: &str) -> Result<(HashMap<String, Component>, HashMap<String, Vuln>), String> {
+fn parse_file(path: &str) -> Result<SbomIndex, String> {
     let content = fs::read_to_string(path)
         .map_err(|e| format!("❌ Failed to read {}: {}", path, e))?;
 
