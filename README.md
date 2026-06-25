@@ -39,8 +39,6 @@ cargo install gravedigger
 cargo install --git https://github.com/I-XXII-V/gravedigger
 ```
 
-
-
 AUR scanning needs `pacman -Qm`, so it's Arch-only. The rest (Cargo, npm, PyPI, Go) work on any Linux distro where you've inevitably accumulated dependencies you don't remember adding.
 
 ## Usage
