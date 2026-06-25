@@ -1,6 +1,6 @@
 [package]
 name = "gravedigger"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2024"
 description = "Dependency health scanner for AUR, Cargo, npm, PyPI, and Go — checks CVEs, stale dates, and hijack risk"
 license = "MIT"

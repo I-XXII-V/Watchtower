@@ -9,6 +9,7 @@ mod npm;
 mod osv;
 mod pypi;
 mod sbom;
+mod sbom_diff;
 mod types;
 
 use crate::display::*;
@@ -95,6 +96,15 @@ enum Commands {
     #[command(name = "who-depends", aliases = &["wd"])]
     WhoDepends { crate_name: String },
 
+    /// Compare two CycloneDX SBOM JSON files
+    #[command(name = "sbom-diff")]
+    SbomDiff {
+        /// Path to old SBOM JSON file
+        old: String,
+        /// Path to new SBOM JSON file
+        new: String,
+    },
+
     /// Show dependency changes between git revisions with health info
     #[command(name = "diff")]
     Diff {
@@ -127,6 +137,9 @@ fn main() {
         match cmd {
             Commands::WhoDepends { crate_name } => {
                 downstream::who_depends_crates(&crate_name);
+            }
+            Commands::SbomDiff { old, new } => {
+                sbom_diff::run(&old, &new);
             }
             Commands::Diff {
                 old_ref,

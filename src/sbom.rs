@@ -81,7 +81,7 @@ pub fn render(ecosystem: &str, packages: &[PackageResult]) {
                 {
                     "vendor": "gravedigger",
                     "name": "gravedigger",
-                    "version": "0.2.0"
+                    "version": "0.2.1"
                 }
             ]
         },
@@ -180,7 +180,7 @@ mod tests {
                     "tools": [{
                         "vendor": "gravedigger",
                         "name": "gravedigger",
-                        "version": "0.2.0"
+                        "version": "0.2.1"
                     }]
                 },
                 "components": components,
@@ -215,7 +215,7 @@ mod tests {
                     "tools": [{
                         "vendor": "gravedigger",
                         "name": "gravedigger",
-                        "version": "0.2.0"
+                        "version": "0.2.1"
                     }]
                 },
                 "components": [],
